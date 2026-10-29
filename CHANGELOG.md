@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-29
+
+### Fixed
+
+- `unmarshal` now decodes a union back from what `marshal` wrote for a `[N]byte` variant (bin) or an enumerated array variant (array). Both failed with `.Type_Mismatch` before.
+- Union variant selection now prefers a variant of the item's own kind, then applies the same lenient conversions as plain destinations: integers into floats, bin into strings, str into byte containers and enums. A timestamp now picks a `Timestamp` variant over an earlier `Extension` variant.
+- Decoding into an Odin map no longer allocates scratch space from `context.temp_allocator`. It uses the allocator that the caller passes, so repeated decodes don't grow the temporary arena.
+
 ## [0.1.0] - 2026-10-29
 
 ### Added
@@ -18,5 +26,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Protection against hostile input: the decoder checks declared lengths against the remaining bytes, `max_depth` bounds nesting, and integer decoding checks the destination range.
 - Examples `basic` and `stream`.
 
-[Unreleased]: https://github.com/alexisbcz/odin-msgpack/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/alexisbcz/odin-msgpack/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/alexisbcz/odin-msgpack/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/alexisbcz/odin-msgpack/releases/tag/v0.1.0

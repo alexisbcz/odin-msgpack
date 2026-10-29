@@ -74,8 +74,8 @@ read_into :: proc(d: ^Decoder, ptr: ^$T, allocator := context.allocator) -> (err
 destroy frees everything that unmarshal or read_into allocated inside
 `ptr^` and then zeroes it: strings, slices, dynamic arrays, maps, pointer
 targets, Value and Extension data, recursively. Pass the allocator used to
-decode. Fields tagged `msgpack:"-"` are left alone, because unmarshal never
-writes them.
+decode. Fields tagged `msgpack:"-"` aren't freed, because unmarshal never
+writes them, but they are zeroed with the rest of `ptr^`.
 */
 destroy :: proc(ptr: ^$T, allocator := context.allocator) {
 	if ptr == nil {

@@ -166,7 +166,7 @@ main :: proc() {
 | `Timestamp`, `time.Time` | timestamp extension |
 | `Extension` | extension |
 
-When it decodes, `unmarshal` also turns integers into floats, accepts str and bin for both strings and byte slices, and reads an enum from its member name. A union receives the item in the first variant whose type fits.
+When it decodes, `unmarshal` also turns integers into floats, accepts str and bin for both strings and byte slices, and reads an enum from its member name. A union receives the item in the first variant of the item's own kind. When no variant has that kind, the first variant that one of these conversions reaches receives it.
 
 ### Struct tags
 

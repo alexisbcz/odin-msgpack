@@ -14,7 +14,9 @@ into floats, str and bin are interchangeable for strings and byte slices, a
 str decodes into an enum by member name, and nil leaves the destination at its
 zero value. Struct fields match by tag name, or by field name when the field
 has no tag name; unknown keys are skipped. For a union other than Value, the
-first variant whose type fits the item's kind receives it.
+first variant of the item's own kind receives it; when no variant has that
+kind, the first variant that one of the lenient conversions above reaches
+receives it.
 
 The destination is overwritten, not merged. Free any memory it held before
 the call yourself. On failure `ptr^` is untouched and nothing leaks.
@@ -240,10 +242,13 @@ unmarshal_any :: proc(d: ^Decoder, v: any, allocator: runtime.Allocator) -> (err
 		return unmarshal_struct(d, v, info, allocator)
 
 	case reflect.Type_Info_Union:
-		for variant in info.variants {
-			if kind_fits(kind, variant) {
-				reflect.set_union_variant_typeid(v, variant.id)
-				return unmarshal_any(d, any{v.data, variant.id}, allocator)
+		// Prefer a variant of the item's own kind, then fall back to the lenient conversions.
+		for exact in ([2]bool{true, false}) {
+			for variant in info.variants {
+				if kind_fits(kind, variant, exact) {
+					reflect.set_union_variant_typeid(v, variant.id)
+					return unmarshal_any(d, any{v.data, variant.id}, allocator)
+				}
 			}
 		}
 		return Decode_Error.Type_Mismatch
@@ -397,16 +402,22 @@ find_field :: proc(info: reflect.Type_Info_Struct, key: string) -> int {
 	return -1
 }
 
-// kind_fits reports whether an item of `kind` can decode into a union variant of type `ti`.
+/*
+kind_fits reports whether an item of `kind` can decode into a union variant
+of type `ti`. With `exact`, only the variant's own MessagePack kind fits.
+Without it, the lenient conversions that unmarshal applies to plain
+destinations also fit: integers into floats, str and bin into each other for
+text and bytes, and str into enums.
+*/
 @(private)
-kind_fits :: proc(kind: Kind, ti: ^reflect.Type_Info) -> bool {
+kind_fits :: proc(kind: Kind, ti: ^reflect.Type_Info, exact: bool) -> bool {
 	switch ti.id {
 	case Value:
 		return true
 	case Timestamp, time.Time:
 		return kind == .Timestamp
 	case Extension:
-		return kind == .Extension || kind == .Timestamp
+		return kind == .Extension || (!exact && kind == .Timestamp)
 	case Map:
 		return kind == .Map
 	case Array:
@@ -419,23 +430,43 @@ kind_fits :: proc(kind: Kind, ti: ^reflect.Type_Info) -> bool {
 	case reflect.Type_Info_Integer, reflect.Type_Info_Rune:
 		return kind == .Int
 	case reflect.Type_Info_Enum:
-		return kind == .Int
+		return kind == .Int || (!exact && kind == .String)
 	case reflect.Type_Info_Float:
-		return kind == .Float
+		return kind == .Float || (!exact && kind == .Int)
 	case reflect.Type_Info_String:
-		return kind == .String
+		return info.encoding == .UTF_8 && (kind == .String || (!exact && kind == .Binary))
 	case reflect.Type_Info_Slice:
-		return kind == .Array || (kind == .Binary && is_byte_type(info.elem))
+		return sequence_fits(kind, info.elem, exact)
 	case reflect.Type_Info_Dynamic_Array:
-		return kind == .Array || (kind == .Binary && is_byte_type(info.elem))
+		return sequence_fits(kind, info.elem, exact)
 	case reflect.Type_Info_Array:
+		return sequence_fits(kind, info.elem, exact)
+	case reflect.Type_Info_Enumerated_Array:
 		return kind == .Array
 	case reflect.Type_Info_Map, reflect.Type_Info_Struct:
 		return kind == .Map
 	case reflect.Type_Info_Pointer:
-		return info.elem != nil && kind_fits(kind, info.elem)
+		return info.elem != nil && kind_fits(kind, info.elem, exact)
+	case reflect.Type_Info_Union:
+		for variant in info.variants {
+			if kind_fits(kind, variant, exact) {
+				return true
+			}
+		}
 	}
 	return false
+}
+
+// sequence_fits reports whether an item of `kind` can fill a slice or array of `elem`.
+@(private)
+sequence_fits :: proc(kind: Kind, elem: ^reflect.Type_Info, exact: bool) -> bool {
+	if kind == .Array {
+		return true
+	}
+	if !is_byte_type(elem) {
+		return false
+	}
+	return kind == .Binary || (!exact && kind == .String)
 }
 
 @(private)

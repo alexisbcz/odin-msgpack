@@ -325,10 +325,12 @@ unmarshal_map :: proc(d: ^Decoder, v: any, info: reflect.Type_Info_Map, allocato
 	}
 	runtime.map_reserve_dynamic(raw, info.map_info, uintptr(n)) or_return
 
-	key_buf := mem.alloc_bytes(info.key.size, info.key.align, context.temp_allocator) or_return
-	defer mem.free_bytes(key_buf, context.temp_allocator)
-	value_buf := mem.alloc_bytes(info.value.size, info.value.align, context.temp_allocator) or_return
-	defer mem.free_bytes(value_buf, context.temp_allocator)
+	// Scratch space for one key and one value. It comes from the caller's
+	// allocator, so decoding never touches context.temp_allocator.
+	key_buf := mem.alloc_bytes(info.key.size, info.key.align, allocator) or_return
+	defer mem.free_bytes(key_buf, allocator)
+	value_buf := mem.alloc_bytes(info.value.size, info.value.align, allocator) or_return
+	defer mem.free_bytes(value_buf, allocator)
 
 	key := any{raw_data(key_buf), info.key.id}
 	value := any{raw_data(value_buf), info.value.id}

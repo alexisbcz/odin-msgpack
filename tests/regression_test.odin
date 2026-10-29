@@ -117,3 +117,25 @@ test_union_prefers_exact_kind :: proc(t: ^testing.T) {
 	testing.expect(t, ok, "a timestamp must select the Timestamp variant")
 	testing.expect_value(t, got, msgpack.Timestamp{seconds = 10})
 }
+
+// Decoding into an Odin map uses only the allocator the caller passes, never context.temp_allocator.
+@(test)
+test_unmarshal_map_does_not_use_temp_allocator :: proc(t: ^testing.T) {
+	track: mem.Tracking_Allocator
+	alloc := track_begin(&track)
+	defer track_end(t, &track)
+
+	temp: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&temp, context.allocator)
+	defer mem.tracking_allocator_destroy(&temp)
+	context.temp_allocator = mem.tracking_allocator(&temp)
+
+	// {"a": 1, "b": 2}
+	input := []byte{0x82, 0xa1, 'a', 0x01, 0xa1, 'b', 0x02}
+	m: map[string]int
+	testing.expect_value(t, msgpack.unmarshal(input, &m, alloc), nil)
+	defer msgpack.destroy(&m, alloc)
+	testing.expect_value(t, m["a"], 1)
+	testing.expect_value(t, m["b"], 2)
+	testing.expect_value(t, temp.total_allocation_count, 0)
+}
